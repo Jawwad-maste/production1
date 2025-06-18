@@ -30,6 +30,9 @@ class CODVerifierAjax {
         
         $test_mode = get_option('cod_verifier_test_mode', '1');
         
+        // Log the mode for debugging
+        error_log('COD Verifier: send_otp called in mode: ' . ($test_mode === '1' ? 'Test' : 'Production'));
+        
         if (!session_id()) {
             session_start();
         }
@@ -53,12 +56,12 @@ class CODVerifierAjax {
             $api_key = get_option('cod_verifier_fast2sms_api_key', '');
             
             if (empty($api_key)) {
+                error_log('COD Verifier: Fast2SMS API key not configured.');
                 wp_send_json_error(__('SMS service not configured. Please contact administrator.', 'cod-verifier'));
                 return;
             }
             
-            // Send SMS via Fast2SMS
-            $message = "Your COD verification OTP is: {$otp}. Valid for 5 minutes.";
+            // Send SMS via Fast2SMS using OTP route
             
             $response = wp_remote_post('https://www.fast2sms.com/dev/bulkV2', array(
                 'headers' => array(
@@ -66,24 +69,41 @@ class CODVerifierAjax {
                     'Content-Type' => 'application/json'
                 ),
                 'body' => json_encode(array(
-                    'route' => 'v3',
-                    'sender_id' => 'TXTIND',
-                    'message' => $message,
-                    'language' => 'english',
+                    'route' => 'otp', // Use the correct OTP route
+                    'variables_values' => $otp, // Pass OTP value in variables_values
+                    'sender_id' => 'TXTIND', // Include sender_id as per Fast2SMS POST example
+                    //'language' => 'english', // Language might be default or configured on Fast2SMS for OTP route
                     'flash' => 0,
                     'numbers' => $phone
                 )),
                 'timeout' => 30
             ));
             
+            // Check for WordPress HTTP errors
             if (is_wp_error($response)) {
+                error_log('COD Verifier: wp_remote_post error: ' . $response->get_error_message());
                 wp_send_json_error(__('Failed to send OTP. Please try again.', 'cod-verifier'));
                 return;
             }
             
-            wp_send_json_success(array(
-                'message' => __('OTP sent successfully to your mobile number!', 'cod-verifier')
-            ));
+            $http_status = wp_remote_retrieve_response_code($response);
+            $body = wp_remote_retrieve_body($response);
+            $result = json_decode($body, true);
+            
+            error_log('COD Verifier: Fast2SMS API Response Status: ' . $http_status);
+            error_log('COD Verifier: Fast2SMS API Response Body: ' . $body);
+            
+            // Check Fast2SMS specific response structure for success
+            if ($http_status === 200 && isset($result['return']) && $result['return'] === true) {
+                 wp_send_json_success(array(
+                    'message' => __('OTP sent successfully to your mobile number!', 'cod-verifier')
+                ));
+            } else {
+                // Handle Fast2SMS API reported errors
+                $error_message = isset($result['message']) ? $result['message'] : 'Unknown Fast2SMS error.';
+                error_log('COD Verifier: Fast2SMS API reported error: ' . $error_message);
+                wp_send_json_error(sprintf(__('Failed to send OTP: %s', 'cod-verifier'), $error_message));
+            }
         }
     }
     

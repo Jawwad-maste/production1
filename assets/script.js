@@ -722,8 +722,8 @@ jQuery(document).ready(function($) {
                         alert('TEST MODE - Your OTP is: ' + response.data.otp);
                     }
                     startOTPTimer($btn);
-                    window.codVerifierStatus.otpVerified = true; // Update status on success
-                    updateVerificationStatus(); // Update UI and button state
+                    // window.codVerifierStatus.otpVerified = true; // Update status on success - REMOVED: Verification happens only after verifying OTP
+                    // updateVerificationStatus(); // Update UI and button state - REMOVED: Called after verification step
                 } else {
                     showMessage('otp', response.data, 'error');
                 }
